@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- Relais de lecture des bandes-annonces de JoCaps-TV.
+     L'app TV (sans adresse web) ne peut pas intégrer le lecteur YouTube
+     directement (« Erreur 153 ») : elle charge cette page, qui l'intègre à sa
+     place. Paramètre : ?v=<identifiant YouTube>. Aucune donnée personnelle. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Bande-annonce</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player { position: fixed; inset: 0; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+  var params = new URLSearchParams(location.search);
+  var videoId = (params.get('v') || '').replace(/[^\w-]/g, '');
+  var player = null;
+  function send(type, extra) {
+    try { parent.postMessage(Object.assign({ source: 'jocaps-trailer', type: type }, extra || {}), '*'); } catch (e) {}
+  }
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+      videoId: videoId,
+      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1, hl: 'fr', cc_load_policy: 0, iv_load_policy: 3 },
+      events: {
+        onReady: function (e) { e.target.playVideo(); send('ready', { duration: e.target.getDuration() }); },
+        onStateChange: function (e) {
+          if (e.data === YT.PlayerState.ENDED) send('ended');
+          if (e.data === YT.PlayerState.PLAYING) send('playing');
+          if (e.data === YT.PlayerState.PAUSED) send('paused');
+        },
+        onError: function (e) { send('error', { code: e.data }); }
+      }
+    });
+  }
+  // Commandes de la télécommande, relayées par l'app : pause / lecture, saut.
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (!player || d.target !== 'jocaps-trailer') return;
+    if (d.cmd === 'toggle') {
+      if (player.getPlayerState() === YT.PlayerState.PLAYING) player.pauseVideo(); else player.playVideo();
+    } else if (d.cmd === 'seek') {
+      player.seekTo(Math.max(0, player.getCurrentTime() + (d.by || 0)), true);
+    }
+  });
+  if (!videoId) send('error', { code: 'no-id' });
+  var s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+</script>
+</body>
+</html>
